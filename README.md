@@ -5,4 +5,4 @@ This repository is a collection of Python scripts for manipulating curve network
 - `export-blendernet` : export curve network with normals traced on a mesh
 - `select-extra-curves` : select curves which connect extraordinary vertices in a quad mesh
 
-![select extra curves screenshot](screenshots/select-extra-curves.gif)
+<img width="300" alt="select extra curves screenshot" src="screenshots/select-extra-curves.gif">
