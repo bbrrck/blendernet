@@ -2,13 +2,14 @@
 ### Blender script for selecting curves, which connect extraordinary vertices.
 ### Works only for specific meshes with 'aligned' extraordinary vertices.
 ###
-### (c) 2016-2017 Tibor Stanko [tibor.stanko@gmail.com]
+### (c) 2016-2017 Tibor Stanko [https://tiborstanko.sk]
 ###
 
-### Blender :
-# ALT+S to save
-# ALT+R to reload
-# ALT+P to execute
+# Blender :
+# ALT+S (⌥+S) to save
+# ALT+R (⌥+R) to reload
+# ALT+P (⌥+P) to execute
+
 import os
 import os.path
 import bpy,bmesh
