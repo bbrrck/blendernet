@@ -246,7 +246,7 @@ def getCurveNodes(sorted,nodes):
     # get the placement of nodes
     mask, nodeglobal = ismember(sorted,nodes)
     # local indices of nodes
-    l = np.concatenate( np.where(mask) )+1
+    l = np.concatenate( np.where(mask) )
     # global indices of nodes
     g = np.concatenate( nodeglobal[mask] )
     # the curve is closed if it has identical first and last node
