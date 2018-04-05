@@ -1,6 +1,6 @@
 import numpy as np
 import scipy.sparse as sp
-from scipy.sparse.linalg import lsqr
+from scipy.sparse.linalg import *
 
 from mpl_toolkits.mplot3d import Axes3D
 import matplotlib.pyplot as plt
@@ -125,9 +125,12 @@ def main():
     # counter : total number of edges
     eshift = 0;
     # loop over curves
+
     for curve in curves:
 
         curve.gidx, cshift = indexNetwork(curve,cshift)
+
+        print(curve.gidx)
 
         # fill the normal matrix
         N[curve.gidx,:] = curve.N
@@ -246,24 +249,19 @@ def main():
     # construct sparse Laplacian
     L = sp.coo_matrix((W, (I, J)))
 
-    # prepare the Poisson system
-    # WARNING : SOLVED IN THE LEAST SQUARES SENSE
-    # as A is not square (numrows > numcols)
-    # i.e. system is overdetermined.
-    # This means we solve
-    #    min_(V) || A*V - B ||
+    A = L.transpose() * L
+    b = L.transpose() * dT
 
-    x = lsqr(L,dT[:,0])
-    y = lsqr(L,dT[:,1])
-    z = lsqr(L,dT[:,2])
+    print(L.shape)
+    print(A.shape)
+    print(b.shape)
 
-    x = np.array([0,1,2])
-    y = np.array([0,1,2])
-    z = np.array([0,1,2])
+    X = spsolve(A,b)
+    # print(X)
 
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
-    ax.scatter(x,y,z,c='r',marker='o')
+    ax.scatter(X[:,0],X[:,1],X[:,2],c='r',marker='o')
     plt.show()
 
 #-------------------------------------------------------------------------------
