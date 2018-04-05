@@ -1,1 +1,4 @@
 *.blend1
+*.m
+.DS_Store
+*.rawnet
