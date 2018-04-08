@@ -1,11 +1,7 @@
 import numpy as np
 import scipy.sparse as sp
-from scipy.sparse.linalg import *
-
+from scipy.sparse.linalg import spsolve
 import pyviewer3d.viewer as vi
-
-from mpl_toolkits.mplot3d import Axes3D
-import matplotlib.pyplot as plt
 #-------------------------------------------------------------------------------
 class curvestruct():
     id=0        # curve id
