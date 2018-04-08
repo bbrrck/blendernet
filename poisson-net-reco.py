@@ -1,3 +1,10 @@
+###
+### Poisson network reconstruction from tangents and distances
+###  see Sec. 5 in
+###  https://tiborstanko.sk/assets/smi2017/shape-sensors.pdf
+###
+### (c) 2017-2018 Tibor Stanko [https://tiborstanko.sk]
+###
 import numpy as np
 import scipy.sparse as sp
 from scipy.sparse.linalg import spsolve
@@ -68,7 +75,7 @@ def readRAWNET(filename):
 
     return curves, gnodes
 #-------------------------------------------------------------------------------
-def getCurveGlobalIndexing(curve,shift):
+def getCurveGlobalIndex(curve,shift):
 
     # init the indexing
     idx = np.zeros(curve.nv,dtype=int);
@@ -99,7 +106,7 @@ def getNetworkGlobalIndex(curves,gnodes):
 
     # get indexing for each curve
     for c in range(0,len(curves)) :
-        curves[c].gidx, numpts = getCurveGlobalIndexing(curves[c],numpts)
+        curves[c].gidx, numpts = getCurveGlobalIndex(curves[c],numpts)
 
     return curves, numpts
 #-------------------------------------------------------------------------------
