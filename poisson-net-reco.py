@@ -2,6 +2,8 @@ import numpy as np
 import scipy.sparse as sp
 from scipy.sparse.linalg import *
 
+import pyviewer3d.viewer as vi
+
 from mpl_toolkits.mplot3d import Axes3D
 import matplotlib.pyplot as plt
 #-------------------------------------------------------------------------------
@@ -38,7 +40,7 @@ def readRAWNET(filename):
         # curve : number of nodes
         curve.nn = int(f.readline())
         # curve : local node indices
-        curve.lnodes = np.fromfile(f, dtype=int, count=curve.nn, sep=" ")
+        curve.lnodes = np.fromfile(f, dtype=int, count=curve.nn, sep=" ")-1
         # curve : global node indices
         curve.gnodes = np.fromfile(f, dtype=int, count=curve.nn, sep=" ")
 
@@ -70,7 +72,7 @@ def readRAWNET(filename):
 
     return curves, gnodes
 #-------------------------------------------------------------------------------
-def indexNetwork(curve,shift):
+def getCurveGlobalIndexing(curve,shift):
 
     # init the indexing
     idx = np.zeros(curve.nv,dtype=int);
@@ -92,61 +94,43 @@ def indexNetwork(curve,shift):
     # replace node indices and shift
     idx[curve.lnodes] = curve.gnodes
 
-    # if closed, trim last
-    # if curve.cl:
-        # idx = np.delete(idx,-1)
-
     return idx, shift
 #-------------------------------------------------------------------------------
-def main():
-    curves, gnodes = readRAWNET("lilium.rawnet")
-    nc = len(curves)
-    numnodes = len(gnodes)
+def getNetworkGlobalIndex(curves,gnodes):
+
+    # init shift
+    numpts=len(gnodes)
+
+    # get indexing for each curve
+    for c in range(0,len(curves)) :
+        curves[c].gidx, numpts = getCurveGlobalIndexing(curves[c],numpts)
+
+    return curves, numpts
+#-------------------------------------------------------------------------------
+def buildPoissonSystem(curves,gnodes):
 
     rowcount=0
     for curve in curves:
         rowcount += curve.nv-1 if curve.cl else curve.nv
 
-    rshift=0
-    cshift=numnodes
-
-    # Laplacian matrix : triplets for sparse : row index, col index, weights
+    # Laplacian matrix : triplets for sparse
     # three entries per row
     J = np.zeros(3*rowcount)
     I = np.zeros(3*rowcount)
     W = np.zeros(3*rowcount)
+
+    # divergence of tangents
+    R = np.zeros((rowcount,3));
+
+    rshift=0
     entrycount=0
-    # difference of tangents
-    dT = np.zeros((rowcount,3));
-    # edge matrix
-    E = np.zeros((10000,5));
-    # normal matrix
-    N = np.zeros((10000,3));
-    # counter : total number of edges
-    eshift = 0;
+
     # loop over curves
+    for curve in curves :
 
-    for curve in curves:
+        # number of unique points in the curve
+        k = curve.nv-1 if curve.cl else curve.nv
 
-        curve.gidx, cshift = indexNetwork(curve,cshift)
-
-        print(curve.gidx)
-
-        # fill the normal matrix
-        N[curve.gidx,:] = curve.N
-
-        # fill the edge matrix
-        ne = curve.nv-1
-        e = eshift + np.arange(0,ne)
-        E[e,0] = curve.gidx[:-1]
-        E[e,1] = curve.gidx[1:]
-        E[e,2] = curve.id
-        E[e,3] = np.arange(0,ne)
-        E[e,4] = curve.bd
-
-        eshift += ne
-
-        # prepare Laplacian matrix
         # inverse edge lengths
         EL = curve.D[1:] - curve.D[:-1]
         iEL = 1.0 / EL
@@ -155,11 +139,11 @@ def main():
         if curve.cl:
             # closed curve, all vertices are inner
             # (exclude last since the same as first)
-            inner = np.arange(0,curve.nv-1)
+            inner = np.arange(0,k-1)
         else:
             # open curves
             # (exclude first and last)
-            inner = np.arange(1,curve.nv-1)
+            inner = np.arange(1,k-2)
 
         # number of inner vertices
         ni = inner.size
@@ -169,8 +153,9 @@ def main():
         i1 = inner
         i2 = inner+1
 
-        i0[ i0==-1 ] = curve.nv-2
-        i2[ i2==curve.nv-1 ] = 0
+        if curve.cl:
+            i0[ i0==-1 ] = k-1
+            i2[ i2==k ] = 0
 
         # in : three entries per row
         entry0 = entrycount + np.arange( 0*ni, 1*ni)
@@ -204,8 +189,8 @@ def main():
         W[ entry1 ] = + iEL[i0] + iEL[i1]
         W[ entry2 ] =           - iEL[i1]
 
-        # in : dT = gradient of the tangent field
-        dT[rows,:] = curve.T[i0,:] - curve.T[i1,:]
+        # in : R = divergence of the tangent field
+        R[rows,:] = curve.T[i0,:] - curve.T[i1,:]
 
         # open curves : boundary conditions
         if curve.cl == 0:
@@ -235,34 +220,85 @@ def main():
             W[ entrybd0 ] = -iEL[[0,-1]]
             W[ entrybd1 ] = +iEL[[0,-1]]
 
-            # bd : dT = gradient of the tangent field
-            dT[rows,:] = curve.T[[0,-1],:];
+            # bd : R = gradient of the tangent field
+            R[rows,:] = curve.T[[0,-1],:];
 
     # trim
-    N = N[:cshift,:]
-    E = E[:eshift]
     I = I[:entrycount]
     J = J[:entrycount]
     W = W[:entrycount]
-    dT = dT[:rshift]
+    R = R[:rshift]
 
     # construct sparse Laplacian
     L = sp.coo_matrix((W, (I, J)))
 
+    return L, R
+#-------------------------------------------------------------------------------
+def getNetworkEdgeMatrix(curves):
+    E = np.zeros((10000,2),dtype=np.uint32)
+    eshift=0
+    for curve in curves:
+        ne = curve.nv-1
+        e = eshift + np.arange(0,ne)
+        E[e,0] = curve.gidx[:-1]
+        E[e,1] = curve.gidx[1:]
+        # E[e,2] = curve.id
+        # E[e,3] = np.arange(0,ne)
+        # E[e,4] = curve.bd
+        eshift += ne
+    return E[:eshift]
+#-------------------------------------------------------------------------------
+def getNetworkNormals(curves,numpts):
+    N = np.zeros((numpts,3))
+    for curve in curves:
+        N[curve.gidx,:] = curve.N
+    return N
+#-------------------------------------------------------------------------------
+def testCube():
+    V = np.array((
+        (-1,-1,-1),
+        (+1,-1,-1),
+        (+1,+1,-1),
+        (-1,+1,-1),
+        (-1,-1,+1),
+        (+1,-1,+1),
+        (+1,+1,+1),
+        (-1,+1,+1)
+    ),dtype=np.float32)
+    N = V
+    E = np.array((
+        (0,1),
+        (1,2),
+        (2,3),
+        (3,0),
+        (4,5),
+        (5,6),
+        (6,7),
+        (7,4),
+        (0,4),
+        (1,5),
+        (2,6),
+        (3,7)
+    ),dtype=np.uint32)
+    return V,N,E
+#-------------------------------------------------------------------------------
+def main():
+    curves, gnodes = readRAWNET("lilium.rawnet")
+    curves, numpts = getNetworkGlobalIndex(curves,gnodes)
+    L, R = buildPoissonSystem(curves,gnodes)
+
+    # solve in the least-squares sense
     A = L.transpose() * L
-    b = L.transpose() * dT
+    b = L.transpose() * R
+    V = spsolve(A,b)
+    E = getNetworkEdgeMatrix(curves)
+    N = getNetworkNormals(curves,numpts)
 
-    print(L.shape)
-    print(A.shape)
-    print(b.shape)
+    # V,N,E = testCube()
 
-    X = spsolve(A,b)
-    # print(X)
-
-    fig = plt.figure()
-    ax = fig.add_subplot(111, projection='3d')
-    ax.scatter(X[:,0],X[:,1],X[:,2],c='r',marker='o')
-    plt.show()
+    viewer = vi.Viewer()
+    viewer.add_edges(V,N,E);
+    viewer.render()
 
 #-------------------------------------------------------------------------------
 if __name__ == "__main__": main()
