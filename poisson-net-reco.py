@@ -297,10 +297,14 @@ def main():
     E = getNetworkEdgeMatrix(curves)
     N = getNetworkNormals(curves,numpts)
 
-    # V,N,E = testCube()
+    mV, F = vi.readOFF("lilium.off")
+    mN = vi.per_vertex_normals(mV,F)
+
+    print(mN)
 
     viewer = vi.Viewer()
-    viewer.add_edges(V,N,E);
+    viewer.add_edges(V,N,E)
+    viewer.add_mesh(mV,mN,F)
     viewer.render()
 
 #-------------------------------------------------------------------------------

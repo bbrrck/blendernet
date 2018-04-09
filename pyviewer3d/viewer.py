@@ -38,8 +38,7 @@ def per_vertex_normals(V,F):
     N[ F[:,0] ] += FN
     N[ F[:,1] ] += FN
     N[ F[:,2] ] += FN
-    normalize_v3(N)
-    return N
+    return normalize_v3(N)
 #-------------------------------------------------
 def cube():
     V = np.array([
@@ -66,8 +65,8 @@ def cube():
     ], dtype=np.uint32 )
     return V, F
 #-------------------------------------------------
-def test_mesh(dataname):
-    f = open(VIEWER_DIR+"testdata/"+dataname+".off","r")
+def readOFF(filename):
+    f = open(filename,"r")
     assert f.readline() == "OFF\n"
     nv, nf, zero = f.readline().split()
     nv = int(nv)
@@ -76,21 +75,6 @@ def test_mesh(dataname):
     V = V.reshape(-1, 3)
     F = np.fromfile(f, dtype=np.uint32, count=4*nf, sep=" ")
     F = F.reshape(-1, 4)[:, 1:]
-    return V, F
-#-------------------------------------------------
-def objmesh():
-    #f = open("elephant.obj", "r")
-    f = open(VIEWER_DIR + "horse.obj", "r")
-    nv, nn, nf = f.readline().split()
-    nv = int(nv)
-    nn = int(nn)
-    nf = int(nf)
-    V = np.fromfile(f, dtype=np.float32, count=3*nv, sep=" ")
-    V = V.reshape(-1, 3)
-    N = np.fromfile(f, dtype=np.float32, count=3*nn, sep=" ")
-    N = N.reshape(-1, 3)
-    F = np.fromfile(f, dtype=np.uint32, count=3*nf, sep=" ")
-    F = F.reshape(-1, 3)
     return V, F
 #-------------------------------------------------
 def ortho( left, right, bottom, top, nearVal, farVal):
@@ -294,11 +278,13 @@ class Viewer():
         E[:,0] = i00 + i01 + i11 + i10
         E[:,1] = i01 + i11 + i10 + i00
 
+        N = per_vertex_normals(V,F)
+
         # add the mesh
-        self.add_mesh(V,F,E,wireframe)
+        self.add_mesh(V,N,F,E,wireframe)
 
 
-    def add_mesh(self,V,F,E=None,wireframe=False) :
+    def add_mesh(self,V,N,F,E=None,wireframe=False) :
 
         # Calculate edges if not provided
         if E is None :
@@ -315,10 +301,11 @@ class Viewer():
             E += self.edges.max()+1
 
         # Store
-        self.verts = np.concatenate( (self.verts, V ), axis=0 )
-        self.edges = np.concatenate( (self.edges, E ), axis=0 )
+        self.verts = np.concatenate( (self.verts, V.astype(np.float32) ), axis=0 )
+        self.nrmls = np.concatenate( (self.nrmls, N.astype(np.float32) ), axis=0 )
+        self.edges = np.concatenate( (self.edges, E.astype(np.uint32) ), axis=0 )
         if not wireframe :
-            self.faces = np.concatenate( (self.faces, F ), axis=0 )
+            self.faces = np.concatenate( (self.faces, F.astype(np.uint32) ), axis=0 )
 
     def add_edges(self,V,N,E):
         self.verts = np.concatenate( (self.verts, V.astype(np.float32) ), axis=0 )
@@ -402,10 +389,7 @@ class Viewer():
             self.scale = 1. / aabb
 
         # Snap to centroid
-        self.verts -= 0.5*(self.verts.max(0)+self.verts.min(0))
-
-        # Compute per-vertex normals
-        #self.nrmls = per_vertex_normals(self.verts,self.faces)
+        # self.verts -= 0.5*(self.verts.max(0)+self.verts.min(0))
 
         # Recompute Model, View, Projection matrices
         self.recompute_matrices()
@@ -488,15 +472,15 @@ class Viewer():
                 glUniform1i( self.location.cmode, 1 )
                 glDrawElements(GL_LINES, self.edges.size, GL_UNSIGNED_INT, None)
 
-            # # Draw triangles
-            # if self.rendernormals :
-            #     # Color by normals
-            #     glUniform1i( self.location.cmode, 2 )
-            # else :
-            #     # Uniform color
-            #     glUniform1i( self.location.cmode, 0 )
-            # glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, self.vbo[2])
-            # glDrawElements(GL_TRIANGLES, self.faces.size, GL_UNSIGNED_INT, None)
+            # Draw triangles
+            if self.rendernormals :
+                # Color by normals
+                glUniform1i( self.location.cmode, 2 )
+            else :
+                # Uniform color
+                glUniform1i( self.location.cmode, 0 )
+            glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, self.vbo[2])
+            glDrawElements(GL_TRIANGLES, self.faces.size, GL_UNSIGNED_INT, None)
 
             # Disable vertex arrays
             glDisableVertexAttribArray(0)
@@ -522,8 +506,9 @@ if __name__ == "__main__":
     else :
         dataname = "bumpy"
 
-    V,F = test_mesh(dataname)
+    V,F = readOFF(dataname)
+    N = per_vertex_normals(V,F)
 
     viewer = Viewer()
-    viewer.add_mesh(V,F)
+    viewer.add_mesh(V,N,F)
     viewer.render()
