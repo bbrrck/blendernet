@@ -219,6 +219,7 @@ class Viewer():
         self.nrmls = np.empty([0,3],dtype=np.float32)
         self.faces = np.empty([0,3],dtype=np.uint32)
         self.edges = np.empty([0,2],dtype=np.uint32)
+        self.curves = np.empty([0,4],dtype=np.uint32)
 
         self.rotate = False
         self.rotation = np.identity(4)
@@ -312,7 +313,27 @@ class Viewer():
         self.nrmls = np.concatenate( (self.nrmls, N.astype(np.float32) ), axis=0 )
         self.edges = np.concatenate( (self.edges, E.astype(np.uint32) ), axis=0 )
 
-    def render(self) :
+    def add_curves(self,V,N,curves):
+        self.verts = np.concatenate( (self.verts, V.astype(np.float32) ), axis=0 )
+        self.nrmls = np.concatenate( (self.nrmls, N.astype(np.float32) ), axis=0 )
+        for curve in curves :
+            C = np.zeros((curve.nv-1,4))
+            C[1:  , 0] = curve.gidx[ :-2]
+            C[ :  , 1] = curve.gidx[ :-1]
+            C[ :  , 2] = curve.gidx[1:  ]
+            C[ :-1, 3] = curve.gidx[2:  ]
+
+            if curve.cl :
+                C[0  ,0] = curve.gidx[  -2]
+                C[ -1,3] = curve.gidx[1   ]
+            else :
+                C[0  ,0] = curve.gidx[ 0   ]
+                C[ -1,3] = curve.gidx[   -1]
+
+            self.curves = np.concatenate( (self.curves, C.astype(np.uint32) ), axis=0 )
+
+
+    def init_glfw(self) :
 
         # Glfw settings
         glfw.window_hint(glfw.SAMPLES,4)
@@ -322,19 +343,19 @@ class Viewer():
         glfw.window_hint(glfw.OPENGL_FORWARD_COMPAT, True)
 
         # Create a windowed mode window and its OpenGL context
-        window = glfw.create_window(self.w, self.h, self.wname, None, None)
-        if not window:
+        self.window = glfw.create_window(self.w, self.h, self.wname, None, None)
+        if not self.window:
             glfw.terminate()
             return
 
         # Make the window's context current
-        glfw.make_context_current(window)
+        glfw.make_context_current(self.window)
 
         # Glfw callbacks
-        glfw.set_scroll_callback( window, self.mouse_scroll_callback )
-        glfw.set_mouse_button_callback( window, self.mouse_button_callback )
-        glfw.set_window_size_callback( window, self.window_resize_callback )
-        glfw.set_key_callback( window, self.key_callback )
+        glfw.set_scroll_callback       ( self.window, self.mouse_scroll_callback )
+        glfw.set_mouse_button_callback ( self.window, self.mouse_button_callback )
+        glfw.set_window_size_callback  ( self.window, self.window_resize_callback )
+        glfw.set_key_callback          ( self.window, self.key_callback )
 
         # OpenGL settings
         glEnable(GL_DEPTH_TEST)
@@ -346,41 +367,79 @@ class Viewer():
         glPolygonOffset(1.0,1.0)
         glPolygonMode(GL_FRONT_AND_BACK, GL_FILL)
 
+    def create_shader_program(self,shadername,geom=False):
+
         # Create shader program
         program = glCreateProgram(1)
 
         # Vertex shader
-        with open(VIEWER_DIR+"shaders/mesh.vert.glsl", 'r') as VS_file:
-            VS = VS_file.read()
-        vshader = glCreateShader(GL_VERTEX_SHADER);
-        glShaderSource(vshader,VS);
-        glCompileShader(vshader);
-        glAttachShader(program,vshader);
+        with open(VIEWER_DIR+"shaders/"+shadername+".vert.glsl", 'r') as VS_file:
+            VS_str = VS_file.read()
+        vs = glCreateShader(GL_VERTEX_SHADER);
+        glShaderSource(vs,VS_str);
+        glCompileShader(vs);
+        glAttachShader(program,vs);
 
         # Fragment shader
-        with open(VIEWER_DIR+"shaders/mesh.frag.glsl", 'r') as FS_file:
-            FS = FS_file.read()
-        fshader = glCreateShader(GL_FRAGMENT_SHADER);
-        glShaderSource(fshader,FS);
-        glCompileShader(fshader);
-        glAttachShader(program,fshader);
+        with open(VIEWER_DIR+"shaders/"+shadername+".frag.glsl", 'r') as FS_file:
+            FS_str = FS_file.read()
+        fs = glCreateShader(GL_FRAGMENT_SHADER);
+        glShaderSource(fs,FS_str);
+        glCompileShader(fs);
+        glAttachShader(program,fs);
+
+        # Geometry shader
+        if geom :
+            with open(VIEWER_DIR+"shaders/"+shadername+".geom.glsl", 'r') as GS_file:
+                GS_str = GS_file.read()
+            gs = glCreateShader(GL_GEOMETRY_SHADER);
+            glShaderSource(gs,GS_str);
+            glCompileShader(gs);
+            glAttachShader(program,gs);
 
         # Link shader program
         glLinkProgram(program);
 
         # Detach and delete shaders
-        glDetachShader(program,vshader);
-        glDetachShader(program,fshader);
-        glDeleteShader(vshader);
-        glDeleteShader(fshader);
+        glDetachShader(program,vs);
+        glDeleteShader(vs);
+        glDetachShader(program,fs);
+        glDeleteShader(fs);
+        if geom :
+            glDetachShader(program,gs);
+            glDeleteShader(gs);
+
+        return program
+
+    def render(self) :
+
+        self.init_glfw()
+
+        program_mesh = self.create_shader_program('mesh')
+        program_vnrm = self.create_shader_program('vnormals',True)
+        program_curv = self.create_shader_program('curve',True)
 
         # Get program locations
-        self.location = lambda:0
-        self.location.model = glGetUniformLocation( program, 'model')
-        self.location.view  = glGetUniformLocation( program, 'view')
-        self.location.nmat  = glGetUniformLocation( program, 'nmat')
-        self.location.proj  = glGetUniformLocation( program, 'proj')
-        self.location.cmode = glGetUniformLocation( program, 'cmode') # 0 uniform 1 fixed 2 normals
+        loc_mesh = lambda:0
+        loc_mesh.model = glGetUniformLocation( program_mesh, 'model')
+        loc_mesh.view  = glGetUniformLocation( program_mesh, 'view')
+        loc_mesh.nmat  = glGetUniformLocation( program_mesh, 'nmat')
+        loc_mesh.proj  = glGetUniformLocation( program_mesh, 'proj')
+        loc_mesh.cmode = glGetUniformLocation( program_mesh, 'cmode') # 0 uniform 1 fixed 2 normals
+
+        # Get program locations
+        loc_vnrm = lambda:0
+        loc_vnrm.model = glGetUniformLocation( program_vnrm, 'model')
+        loc_vnrm.view  = glGetUniformLocation( program_vnrm, 'view')
+        loc_vnrm.nmat  = glGetUniformLocation( program_vnrm, 'nmat')
+        loc_vnrm.proj  = glGetUniformLocation( program_vnrm, 'proj')
+
+        # # Get program locations
+        loc_curve = lambda:0
+        loc_curve.model = glGetUniformLocation( program_curv, 'model')
+        loc_curve.view  = glGetUniformLocation( program_curv, 'view')
+        loc_curve.nmat  = glGetUniformLocation( program_curv, 'nmat')
+        loc_curve.proj  = glGetUniformLocation( program_curv, 'proj')
 
         # Scale to uniform length
         diag = self.verts.max(0)-self.verts.min(0)
@@ -389,7 +448,7 @@ class Viewer():
             self.scale = 1. / aabb
 
         # Snap to centroid
-        # self.verts -= 0.5*(self.verts.max(0)+self.verts.min(0))
+        self.verts -= 0.5*(self.verts.max(0)+self.verts.min(0))
 
         # Recompute Model, View, Projection matrices
         self.recompute_matrices()
@@ -399,7 +458,7 @@ class Viewer():
         glBindVertexArray(self.vao)
 
         # Generate vertex buffers
-        self.vbo = glGenBuffers(4)
+        self.vbo = glGenBuffers(6)
 
         # 0 : position
         glBindBuffer( GL_ARRAY_BUFFER, self.vbo[0])
@@ -421,12 +480,23 @@ class Viewer():
         glBufferData( GL_ELEMENT_ARRAY_BUFFER,
                       self.edges.size * self.edges.itemsize, self.edges, GL_STATIC_DRAW)
 
+        # 4 : vertex indices
+        self.idx = np.arange(self.verts.size,dtype=np.uint32)
+        glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, self.vbo[4])
+        glBufferData( GL_ELEMENT_ARRAY_BUFFER,
+                      self.idx.size * self.idx.itemsize, self.idx, GL_STATIC_DRAW)
+
+        # 5 : vertex indices
+        glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, self.vbo[5])
+        glBufferData( GL_ELEMENT_ARRAY_BUFFER,
+                      self.curves.size * self.curves.itemsize, self.curves, GL_STATIC_DRAW)
+
         # Loop until the user closes the window
-        while not glfw.window_should_close(window) and glfw.get_key(window,glfw.KEY_ESCAPE) != glfw.PRESS:
+        while not glfw.window_should_close(self.window) and glfw.get_key(self.window,glfw.KEY_ESCAPE) != glfw.PRESS:
 
             # Change rotation
             if self.rotate :
-                xpos, ypos = glfw.get_cursor_pos( window )
+                xpos, ypos = glfw.get_cursor_pos( self.window )
                 if self.xpos != xpos or self.ypos != ypos :
 
                     # azimuth
@@ -444,15 +514,6 @@ class Viewer():
             # Clear the buffers
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
 
-            # Use our shader program
-            glUseProgram(program)
-
-            # Set uniforms
-            glUniformMatrix4fv( self.location.model, 1, True, self.model )
-            glUniformMatrix4fv( self.location.view , 1, True, self.view )
-            glUniformMatrix4fv( self.location.nmat , 1, True, self.nmat )
-            glUniformMatrix4fv( self.location.proj , 1, True, self.proj )
-
             # Enable vertex arrays
             glEnableVertexAttribArray(0)
             glEnableVertexAttribArray(1)
@@ -465,29 +526,68 @@ class Viewer():
             glBindBuffer( GL_ARRAY_BUFFER, self.vbo[1] )
             glVertexAttribPointer( 1, 3, GL_FLOAT , False, 0, None )
 
+
+
+            # Use our shader program
+            glUseProgram( program_mesh )
+
+            # Set uniforms
+            glUniformMatrix4fv( loc_mesh.model, 1, True, self.model )
+            glUniformMatrix4fv( loc_mesh.view , 1, True, self.view )
+            glUniformMatrix4fv( loc_mesh.nmat , 1, True, self.nmat )
+            glUniformMatrix4fv( loc_mesh.proj , 1, True, self.proj )
+
             # Draw wireframe
             if self.wire :
                 # Bind element buffer
                 glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, self.vbo[3])
-                glUniform1i( self.location.cmode, 1 )
+                glUniform1i( loc_mesh.cmode, 1 )
                 glDrawElements(GL_LINES, self.edges.size, GL_UNSIGNED_INT, None)
 
             # Draw triangles
             if self.rendernormals :
                 # Color by normals
-                glUniform1i( self.location.cmode, 2 )
+                glUniform1i( loc_mesh.cmode, 2 )
             else :
                 # Uniform color
-                glUniform1i( self.location.cmode, 0 )
+                glUniform1i( loc_mesh.cmode, 0 )
             glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, self.vbo[2])
             glDrawElements(GL_TRIANGLES, self.faces.size, GL_UNSIGNED_INT, None)
+
+
+
+
+            # # Use our shader program
+            # glUseProgram( program_vnrm )
+            #
+            # # Set uniforms
+            # glUniformMatrix4fv( loc_vnrm.model, 1, True, self.model )
+            # glUniformMatrix4fv( loc_vnrm.view , 1, True, self.view )
+            # glUniformMatrix4fv( loc_vnrm.nmat , 1, True, self.nmat )
+            # glUniformMatrix4fv( loc_vnrm.proj , 1, True, self.proj )
+            # glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, self.vbo[4])
+            # glDrawElements( GL_POINTS, self.idx.size, GL_UNSIGNED_INT, None)
+
+
+
+            # Use our shader program
+            glUseProgram( program_curv )
+
+            # Set uniforms
+            glUniformMatrix4fv( loc_curve.model, 1, True, self.model )
+            glUniformMatrix4fv( loc_curve.view , 1, True, self.view )
+            glUniformMatrix4fv( loc_curve.nmat , 1, True, self.nmat )
+            glUniformMatrix4fv( loc_curve.proj , 1, True, self.proj )
+            glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, self.vbo[5])
+            glDrawElements( GL_LINES_ADJACENCY, self.curves.size, GL_UNSIGNED_INT, None)
+
 
             # Disable vertex arrays
             glDisableVertexAttribArray(0)
             glDisableVertexAttribArray(1)
 
             # Swap front and back buffers
-            glfw.swap_buffers(window)
+            glfw.swap_buffers(self.window)
 
             # Poll for and process events
             glfw.poll_events()
@@ -495,7 +595,7 @@ class Viewer():
         # Delete stuff
         glDeleteBuffers(4,self.vbo)
         glDeleteVertexArrays(1,(self.vao,))
-        glDeleteProgram(program)
+        glDeleteProgram(program_mesh)
         glfw.terminate()
 
 #-------------------------------------------------

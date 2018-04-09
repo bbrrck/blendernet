@@ -1,9 +1,6 @@
 #version 330
-uniform float gamma;
-in vec3 fColor;
-out vec4 oColor;
+out vec4 color;
 void main()
 {
-    vec3 color = pow(fColor,vec3(1./gamma));
-    oColor = vec4(color,1.0);
+    color = vec4(0.,0.,1.,1.);
 }

@@ -300,11 +300,10 @@ def main():
     mV, F = vi.readOFF("lilium.off")
     mN = vi.per_vertex_normals(mV,F)
 
-    print(mN)
-
     viewer = vi.Viewer()
-    viewer.add_edges(V,N,E)
-    viewer.add_mesh(mV,mN,F)
+    # viewer.add_edges(V,N,E)
+    viewer.add_curves(V,N,curves)
+    # viewer.add_mesh(mV,mN,F)
     viewer.render()
 
 #-------------------------------------------------------------------------------
