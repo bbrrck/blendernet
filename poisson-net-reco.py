@@ -9,71 +9,7 @@ import numpy as np
 import scipy.sparse as sp
 from scipy.sparse.linalg import spsolve
 import pyviewer3d.viewer as vi
-#-------------------------------------------------------------------------------
-class curvestruct():
-    id=0        # curve id
-    bd=False    # boundary?
-    cl=False    # closed?
-    nn=0        # number of nodes
-    nv=0        # number of datapoints
-    lnodes=[]   # local node indices
-    gnodes=[]   # global node indices
-    D=[]        # data : distances
-    T=[]        # data : tangents
-    N=[]        # data : normalss
-    gidx=[]     # global indices
-#-------------------------------------------------------------------------------
-def readRAWNET(filename):
-    f = open(filename,"r")
-    curves = []
-    gnodes = set([])
-    nc = int(f.readline())
-    for c in range(0,nc):
-
-        # init new curve
-        curve = curvestruct()
-
-        # curve id
-        curve.id = c
-        # curve : boundary or interior?
-        curve.bd = int(f.readline())
-        # curve : closed or open
-        curve.cl = int(f.readline())
-
-        # curve : number of nodes
-        curve.nn = int(f.readline())
-        # curve : local node indices
-        curve.lnodes = np.fromfile(f, dtype=int, count=curve.nn, sep=" ")-1
-        # curve : global node indices
-        curve.gnodes = np.fromfile(f, dtype=int, count=curve.nn, sep=" ")
-
-        # curve : number of datapoints
-        curve.nv = int(f.readline())
-        # datapoints (7D)
-        DTN = np.fromfile(f, dtype=np.float32, count=7*curve.nv, sep=" ")
-        DTN = DTN.reshape(-1, 7)
-        # curve : distances
-        curve.D = DTN[:,0]
-        # curve : tangents
-        curve.T = DTN[:,1:4]
-        # curve : normals
-        curve.N = DTN[:,4:7]
-
-        # store
-        curves.append(curve)
-        gnodes.update(curve.gnodes)
-
-        # # print stuff
-        # print("\n--------\n\nCurve %d" % c)
-        # print(curve.id)
-        # print(curve.bd)
-        # print(curve.cl)
-        # print(curve.lnodes)
-        # print(curve.gnodes)
-
-    f.close()
-
-    return curves, gnodes
+import pycurvenet.io as io
 #-------------------------------------------------------------------------------
 def getCurveGlobalIndex(curve,shift):
 
@@ -257,54 +193,55 @@ def getNetworkNormals(curves,numpts):
         N[curve.gidx,:] = curve.N
     return N
 #-------------------------------------------------------------------------------
-def testCube():
-    V = np.array((
-        (-1,-1,-1),
-        (+1,-1,-1),
-        (+1,+1,-1),
-        (-1,+1,-1),
-        (-1,-1,+1),
-        (+1,-1,+1),
-        (+1,+1,+1),
-        (-1,+1,+1)
-    ),dtype=np.float32)
-    N = V
-    E = np.array((
-        (0,1),
-        (1,2),
-        (2,3),
-        (3,0),
-        (4,5),
-        (5,6),
-        (6,7),
-        (7,4),
-        (0,4),
-        (1,5),
-        (2,6),
-        (3,7)
-    ),dtype=np.uint32)
-    return V,N,E
+# def testCube():
+#     V = np.array((
+#         (-1,-1,-1),
+#         (+1,-1,-1),
+#         (+1,+1,-1),
+#         (-1,+1,-1),
+#         (-1,-1,+1),
+#         (+1,-1,+1),
+#         (+1,+1,+1),
+#         (-1,+1,+1)
+#     ),dtype=np.float32)
+#     N = V
+#     E = np.array((
+#         (0,1),
+#         (1,2),
+#         (2,3),
+#         (3,0),
+#         (4,5),
+#         (5,6),
+#         (6,7),
+#         (7,4),
+#         (0,4),
+#         (1,5),
+#         (2,6),
+#         (3,7)
+#     ),dtype=np.uint32)
+#     return V,N,E
 #-------------------------------------------------------------------------------
 def main():
-    curves, gnodes = readRAWNET("lilium.rawnet")
+    curves, gnodes = io.readRAWNET("lilium.rawnet")
     curves, numpts = getNetworkGlobalIndex(curves,gnodes)
     L, R = buildPoissonSystem(curves,gnodes)
-
     # solve in the least-squares sense
     A = L.transpose() * L
     b = L.transpose() * R
     V = spsolve(A,b)
     E = getNetworkEdgeMatrix(curves)
     N = getNetworkNormals(curves,numpts)
-
-    mV, F = vi.readOFF("lilium.off")
-    mN = vi.per_vertex_normals(mV,F)
-
-    viewer = vi.Viewer()
-    # viewer.add_edges(V,N,E)
-    viewer.add_curves(V,N,curves)
-    # viewer.add_mesh(mV,mN,F)
-    viewer.render()
+    io.writeNET("lilium.net",V,N,curves,gnodes)
+    # return
+    #
+    # mV, F = vi.readOFF("lilium.off")
+    # mN = vi.per_vertex_normals(mV,F)
+    #
+    # viewer = vi.Viewer()
+    # # viewer.add_edges(V,N,E)
+    # viewer.add_curves(V,N,curves)
+    # # viewer.add_mesh(mV,mN,F)
+    # viewer.render()
 
 #-------------------------------------------------------------------------------
 if __name__ == "__main__": main()
