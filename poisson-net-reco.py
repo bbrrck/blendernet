@@ -8,8 +8,7 @@
 import numpy as np
 import scipy.sparse as sp
 from scipy.sparse.linalg import spsolve
-import pyviewer3d.viewer as vi
-import pycurvenet.io as io
+import pycurves.io
 #-------------------------------------------------------------------------------
 def getCurveGlobalIndex(curve,shift):
 
@@ -193,36 +192,8 @@ def getNetworkNormals(curves,numpts):
         N[curve.gidx,:] = curve.N
     return N
 #-------------------------------------------------------------------------------
-# def testCube():
-#     V = np.array((
-#         (-1,-1,-1),
-#         (+1,-1,-1),
-#         (+1,+1,-1),
-#         (-1,+1,-1),
-#         (-1,-1,+1),
-#         (+1,-1,+1),
-#         (+1,+1,+1),
-#         (-1,+1,+1)
-#     ),dtype=np.float32)
-#     N = V
-#     E = np.array((
-#         (0,1),
-#         (1,2),
-#         (2,3),
-#         (3,0),
-#         (4,5),
-#         (5,6),
-#         (6,7),
-#         (7,4),
-#         (0,4),
-#         (1,5),
-#         (2,6),
-#         (3,7)
-#     ),dtype=np.uint32)
-#     return V,N,E
-#-------------------------------------------------------------------------------
 def main():
-    curves, gnodes = io.readRAWNET("lilium.rawnet")
+    curves, gnodes = pycurves.io.readRAWNET("data/lilium.rawnet")
     curves, numpts = getNetworkGlobalIndex(curves,gnodes)
     L, R = buildPoissonSystem(curves,gnodes)
     # solve in the least-squares sense
@@ -231,17 +202,6 @@ def main():
     V = spsolve(A,b)
     E = getNetworkEdgeMatrix(curves)
     N = getNetworkNormals(curves,numpts)
-    io.writeNET("lilium.net",V,N,curves,gnodes)
-    # return
-    #
-    # mV, F = vi.readOFF("lilium.off")
-    # mN = vi.per_vertex_normals(mV,F)
-    #
-    # viewer = vi.Viewer()
-    # # viewer.add_edges(V,N,E)
-    # viewer.add_curves(V,N,curves)
-    # # viewer.add_mesh(mV,mN,F)
-    # viewer.render()
-
+    pycurves.io.writeNET("data/lilium.net",V,N,curves,gnodes)
 #-------------------------------------------------------------------------------
 if __name__ == "__main__": main()

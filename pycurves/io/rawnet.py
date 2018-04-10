@@ -1,5 +1,5 @@
 import numpy as np
-
+#-------------------------------------------------------------------------------
 class curvestruct():
     id=0        # curve id
     bd=False    # boundary?
@@ -12,8 +12,8 @@ class curvestruct():
     T=[]        # data : tangents
     N=[]        # data : normalss
     gidx=[]     # global indices
-
-def readRAWNET(filename):
+#-------------------------------------------------------------------------------
+def read_rawnet(filename):
     f = open(filename,"r")
     curves = []
     gnodes = set([])
@@ -49,7 +49,7 @@ def readRAWNET(filename):
         gnodes.update(curve.gnodes)
     f.close()
     return curves, gnodes
-
-
-def writeRAWNET(filename):
+#-------------------------------------------------------------------------------
+def write_rawnet(filename):
     pass
+#-------------------------------------------------------------------------------

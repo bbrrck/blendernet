@@ -17,21 +17,7 @@ from collections import Counter
 import os, os.path
 import bpy, bmesh
 import time, datetime
-#-------------------------------------------------------------------------------
-def ismember(a,b):
-    dim = a.shape
-    aa = a.flatten()
-    bb = b.flatten()
-    tf = np.in1d(aa,bb)
-    index = np.array([np.where(bb==i)[0] if t else -1 for i,t in zip(aa,tf)])
-    return tf.reshape(dim), index.reshape(dim)
-#-------------------------------------------------------------------------------
-def normalize_rows(A):
-    A = np.nan_to_num(A)
-    l = np.sqrt(np.sum(np.square(A),axis=1))
-    i = l>0
-    A[i,:] /= l[i,np.newaxis]
-    return A, l
+import pycurves.matrix
 #-------------------------------------------------------------------------------
 def getBlenderNetwork(dataname):
 
@@ -258,7 +244,7 @@ def getCurveTangentsAndDistances(V,closed):
     # closed curves: 1st and last vertex are the same -> next line is valid
     T = V[1:,:] - V[0:-1,:]
     # normalize and get lengths
-    T, L = normalize_rows(T)
+    T, L = pycurves.matrix.normalize_rows(T)
     # distances from lengths
     D = np.cumsum(L)
     D = np.insert(D, 0, 0, axis=0)
